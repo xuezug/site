@@ -43,6 +43,40 @@ test.describe('节奏榜（/tier）', () => {
     await expect(page.getByTestId('pool-count')).toHaveText('共 916 张 · 全站已上榜 0 张');
   });
 
+  test('放入卡片不撑高档位，拖动锁定不改变内容宽度', async ({ page }) => {
+    await openTier(page);
+    const row = tierRow(page, 't-s');
+    const before = await row.boundingBox();
+    expect(before).not.toBeNull();
+
+    await placeWithMenu(page, poolCards(page).first(), 'S');
+    await expect(placedCards(page, 't-s')).toHaveCount(1);
+
+    // A placed card must fit the row's existing height (regression: the old
+    // 112/144px card made the row jump from 126 to ~182px).
+    const after = await row.boundingBox();
+    expect(after!.height).toBeCloseTo(before!.height, 1);
+    expect(after!.width).toBeCloseTo(before!.width, 1);
+
+    // `body.overflow-hidden` during a drag removes the scrollbar. On classic
+    // scrollbar platforms that widens the viewport by ~15px and shifts the
+    // page right until drop; the reserved gutter keeps the width stable.
+    expect(
+      await page.evaluate(() => getComputedStyle(document.documentElement).scrollbarGutter),
+    ).toBe('stable');
+
+    const tile = poolCards(page).nth(1);
+    await tile.scrollIntoViewIfNeeded();
+    const box = await tile.boundingBox();
+    await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box!.x + box!.width / 2 + 20, box!.y - 40, { steps: 5 });
+    await expect(page.locator('body.overflow-hidden')).toHaveCount(1);
+    const during = await row.boundingBox();
+    expect(during!.width).toBeCloseTo(before!.width, 1);
+    await page.mouse.up();
+  });
+
   test('筛选：火 + 5★ 得 126 张，仅看未上榜排除已上榜卡片', async ({ page }) => {
     await openTier(page);
 

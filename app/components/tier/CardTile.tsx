@@ -14,8 +14,10 @@ export type CardFaceSize = 'pool' | 'card' | 'overlay';
 const SIZE_CLASSES: Record<CardFaceSize, string> = {
   // Fluid width: the pool grid decides the column count (4/6/8 per design §6.1).
   pool: 'w-full',
-  // Fixed width inside a tier row: 88 / 112 / 144px across the breakpoints.
-  card: 'w-[88px] sm:w-[112px] lg:w-[144px]',
+  // Fixed width inside a tier row. One size at every breakpoint: the row's
+  // label column already sets a ~126px baseline, and a wider card (the old
+  // 112/144px) made rows grow when a card was dropped in.
+  card: 'w-[88px]',
   overlay: 'w-[160px]',
 };
 

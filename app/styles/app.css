@@ -33,6 +33,10 @@
 
 html {
   background: var(--bl-bg);
+  /* Reserve the scrollbar gutter even when a drag lock hides the scrollbar
+     (`body.overflow-hidden`). Without it, classic-scrollbar platforms gain
+     ~15px of width mid-drag and the page visibly shifts right until drop. */
+  scrollbar-gutter: stable;
 }
 
 body {
