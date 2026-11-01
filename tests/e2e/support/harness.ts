@@ -27,12 +27,13 @@ export const SNAPSHOTS_KEY = 'bl.tier.snapshots.v1';
 export type IconMode = 'ok' | 'broken';
 
 /**
- * Answer every icon request locally. `broken` mimics the missing R2 CORS rule
- * from design §10, which must degrade to placeholder tiles instead of failing
- * the export.
+ * Answer every icon request locally. `broken` mimics icons blocked at the
+ * network/CORS layer, which must degrade to placeholder tiles instead of
+ * failing the export. The export fetches carry a `?v=` cache key, so the
+ * pattern must allow a query string.
  */
 export async function stubCardIcons(page: Page, mode: IconMode = 'ok'): Promise<void> {
-  await page.route('**/card_icons/*.png', (route) =>
+  await page.route(/\/card_icons\/[^?]+\.png(?:\?.*)?$/, (route) =>
     mode === 'ok'
       ? route.fulfill({ status: 200, contentType: 'image/png', body: TINY_PNG })
       : route.fulfill({ status: 500, contentType: 'text/plain', body: 'icon unavailable' }),

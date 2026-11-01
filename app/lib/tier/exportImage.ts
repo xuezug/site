@@ -4,8 +4,10 @@
  * Icons live on R2, so drawing them straight into a canvas would taint it.
  * Instead every placed icon is fetched as a Blob, turned into an object URL and
  * handed to the off-screen `ExportBoard`; `modern-screenshot` then re-embeds the
- * already-local blobs. A failed fetch (CORS is not configured yet — Task 11)
- * degrades to the placeholder tile and never aborts the export.
+ * already-local blobs. Fetches go through `iconFetchUrl` so they use a cache key
+ * created after the bucket CORS rules (the originals are cached as immutable for
+ * a year). A failed fetch degrades to the placeholder tile and never aborts the
+ * export.
  *
  * Object URLs are created and revoked within a single call, so repeated
  * exports do not leak them.
@@ -29,6 +31,23 @@ export const ICON_TIMEOUT_MS = 5000;
 
 /** Matches the site background so the PNG has no transparent margins. */
 export const EXPORT_BACKGROUND = '#0b0d12';
+
+/**
+ * Cache key appended to icon fetches. R2 serves these objects with
+ * `max-age=31536000, immutable`, so responses cached before the bucket's CORS
+ * rules existed (no `Access-Control-Allow-Origin`) would otherwise keep
+ * failing forever. A stable query string creates fresh cache entries that
+ * carry the CORS headers. Bump the value if the bucket CORS config changes.
+ */
+export const ICON_CORS_CACHE_KEY = 'v=1';
+
+/** Appends the CORS cache key to an icon URL (no-op for an empty URL). */
+export function iconFetchUrl(url: string): string {
+  if (url === '') {
+    return url;
+  }
+  return `${url}${url.includes('?') ? '&' : '?'}${ICON_CORS_CACHE_KEY}`;
+}
 
 type IconTarget = { serial: number; url: string };
 
@@ -95,7 +114,7 @@ async function loadIcons(
 ): Promise<void> {
   await forEachLimited(targets, EXPORT_ICON_CONCURRENCY, async ({ serial, url }) => {
     try {
-      const response = await fetch(url, { mode: 'cors', signal: iconSignal() });
+      const response = await fetch(iconFetchUrl(url), { mode: 'cors', signal: iconSignal() });
       if (!response.ok) {
         return;
       }

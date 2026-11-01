@@ -9,7 +9,7 @@ import {
   toFile,
   type TierFile,
 } from '../../app/lib/tier/importExport';
-import { exportPng, ICON_TIMEOUT_MS, iconSignal } from '../../app/lib/tier/exportImage';
+import { exportPng, ICON_TIMEOUT_MS, iconFetchUrl, iconSignal } from '../../app/lib/tier/exportImage';
 import { MAX_TIERS, type Board } from '../../app/lib/tier/model';
 
 /**
@@ -404,6 +404,18 @@ describe('iconSignal', () => {
   });
 });
 
+describe('iconFetchUrl', () => {
+  it('adds the CORS cache key and preserves an existing query string', () => {
+    expect(iconFetchUrl('https://cdn.example/card_icons/1_1.png')).toBe(
+      'https://cdn.example/card_icons/1_1.png?v=1',
+    );
+    expect(iconFetchUrl('https://cdn.example/a.png?x=1')).toBe(
+      'https://cdn.example/a.png?x=1&v=1',
+    );
+    expect(iconFetchUrl('')).toBe('');
+  });
+});
+
 describe('exportFileName', () => {
   it('uses a local timestamp for both artifacts', () => {
     const date = new Date(2026, 10, 2, 3, 4, 5);
@@ -539,15 +551,15 @@ describe('exportPng', () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(CARDS.length);
     expect(fetchMock).toHaveBeenCalledWith(
-      iconUrl('card_icons/1_10261.png'),
+      iconFetchUrl(iconUrl('card_icons/1_10261.png')),
       expect.objectContaining({ mode: 'cors' }),
     );
     expect(fetchMock).toHaveBeenCalledWith(
-      iconUrl('card_icons/2_10271.png'),
+      iconFetchUrl(iconUrl('card_icons/2_10271.png')),
       expect.objectContaining({ mode: 'cors' }),
     );
     expect(fetchMock).toHaveBeenCalledWith(
-      iconUrl('card_icons/3_10281.png'),
+      iconFetchUrl(iconUrl('card_icons/3_10281.png')),
       expect.objectContaining({ mode: 'cors' }),
     );
 
@@ -613,7 +625,7 @@ describe('exportPng', () => {
   });
 
   it('keeps the successful icons when only some requests fail', async () => {
-    const broken = iconUrl('card_icons/2_10271.png');
+    const broken = iconFetchUrl(iconUrl('card_icons/2_10271.png'));
     fetchMock.mockImplementation((input: unknown) =>
       String(input) === broken
         ? Promise.reject(new Error('CORS'))

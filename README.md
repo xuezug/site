@@ -253,6 +253,12 @@ python tools/site_export/set_r2_cors.py \
 `MaxAgeSeconds: 86400`），`--origins` 覆盖其中的 `AllowedOrigins`；`--config` 可换凭据
 文件，`--bucket` 可换桶名。
 
+R2 公共对象的响应带 `Cache-Control: max-age=31536000, immutable`。在 CORS 规则生效**之前**
+已被缓存的响应不会带 `Access-Control-Allow-Origin`，改桶配置也不会自动刷新它们。所以 PNG
+导出的图标请求统一带 `?v=1`（`ICON_CORS_CACHE_KEY`，见 `app/lib/tier/exportImage.ts`）走新的
+缓存键；页面里的 `<img>` 展示仍用原 URL（展示不需要 CORS）。以后修改 CORS 规则时，同步提升
+这个常量即可让导出立即绕开旧缓存。
+
 ## 已知限制
 
 - 榜单只存在浏览器 `localStorage`，换设备不同步；没有账号、没有后端。
