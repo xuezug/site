@@ -1,0 +1,87 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "《血族》资源站 Tier Maker 榜单文件",
+  "description": "节奏榜导出/导入文件（format \"bl-tier\"、version 1）。卡片只保存 serial 与可读的 name，展示以本站 /data/cards.json 为准。未知字段会被忽略。",
+  "type": "object",
+  "required": [
+    "format",
+    "version",
+    "title",
+    "updatedAt",
+    "tiers"
+  ],
+  "properties": {
+    "format": {
+      "const": "bl-tier",
+      "description": "固定值，用于识别文件类型。"
+    },
+    "version": {
+      "const": 1,
+      "description": "文件格式版本。"
+    },
+    "title": {
+      "type": "string",
+      "description": "榜单标题，默认「我的节奏榜」。"
+    },
+    "updatedAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "导出时间（ISO 8601）；导入时会重新写入当前时间。"
+    },
+    "tiers": {
+      "type": "array",
+      "description": "档位列表，顺序即显示顺序，1–12 个。",
+      "minItems": 1,
+      "maxItems": 12,
+      "items": {
+        "type": "object",
+        "description": "未知字段会被忽略",
+        "required": [
+          "id",
+          "name",
+          "color",
+          "cards"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "档位标识，同一文件内唯一。"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "description": "档位名称，如 S / A / B。"
+          },
+          "color": {
+            "type": "string",
+            "pattern": "^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$",
+            "description": "档位颜色，#rgb 或 #rrggbb。"
+          },
+          "cards": {
+            "type": "array",
+            "description": "档位内的卡片，按显示顺序排列。",
+            "items": {
+              "type": "object",
+              "description": "未知字段会被忽略",
+              "required": [
+                "serial"
+              ],
+              "properties": {
+                "serial": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "description": "卡片编号，对应 /data/cards.json 的 serial。"
+                },
+                "name": {
+                  "type": "string",
+                  "description": "可读快照，可为空；展示以本地数据为准。"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

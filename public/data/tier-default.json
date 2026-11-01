@@ -1,0 +1,44 @@
+{
+  "format": "bl-tier",
+  "version": 1,
+  "title": "我的节奏榜",
+  "updatedAt": "1970-01-01T00:00:00.000Z",
+  "tiers": [
+    {
+      "id": "t-s",
+      "name": "S",
+      "color": "#e11d48",
+      "cards": []
+    },
+    {
+      "id": "t-a",
+      "name": "A",
+      "color": "#f97316",
+      "cards": []
+    },
+    {
+      "id": "t-b",
+      "name": "B",
+      "color": "#eab308",
+      "cards": []
+    },
+    {
+      "id": "t-c",
+      "name": "C",
+      "color": "#22c55e",
+      "cards": []
+    },
+    {
+      "id": "t-d",
+      "name": "D",
+      "color": "#3b82f6",
+      "cards": []
+    },
+    {
+      "id": "t-f",
+      "name": "F",
+      "color": "#8b5cf6",
+      "cards": []
+    }
+  ]
+}
