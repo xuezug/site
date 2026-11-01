@@ -99,23 +99,67 @@ npm run e2e:ci                    # 构建 + 测试（CI 用）
   在首屏以下约 1090px，所以拖拽用例单独用 1440×1400 视口；其余用例保持 1280×900。
 - 失败时 `test-results/` 里有截图与 trace（`npx playwright show-trace <trace.zip>`）。
 
-## 部署
+## 部署（Cloudflare Workers 静态资源）
 
-### Pages 项目设置
+仓库根目录的 `wrangler.jsonc` 已配置成 **assets-only Worker**（没有 Worker 脚本）：
 
-在 Cloudflare Pages 创建项目时（或用 `npx wrangler pages project create <name>`）：
+```jsonc
+{
+  "name": "bl-site",
+  "compatibility_date": "2026-11-02",
+  "assets": {
+    "directory": "./dist",
+    "html_handling": "drop-trailing-slash",
+    "not_found_handling": "404-page"
+  }
+}
+```
 
-| 设置 | 值 | 说明 |
-| --- | --- | --- |
-| Build command | 留空，或 `npm ci && npm run build` | 本仓库直接上传 `dist/`，留空即可 |
-| Build output directory | `dist` | `postbuild` 已把 `dist/client/*` 摊平到 `dist/` |
-| **HTML handling** | **Drop trailing slash** | 关键：否则 Pages 会把 `/tier` 308 到 `/tier/`，与 canonical / sitemap（无尾斜杠）不一致 |
+- `html_handling: drop-trailing-slash`：`/tier/` 会 308 到 `/tier`，与 canonical / sitemap 一致。
+- `not_found_handling: 404-page`：未知路径返回 `dist/404.html`，状态码 404，不用 SPA 兜底。
 
-函数、重写、SPA 回退都不需要：未知路径由 `dist/404.html` 承担，状态码保持 404。
+**不要删除 `wrangler.jsonc`。** 没有它时，`wrangler deploy` 会按 “React Router” 预设自动配置成 SSR 模板
+（`main: workers/app.ts`、输出 `build/client`，并再跑一次构建），而本站是 `ssr: false` 的预渲染静态站，
+会在 `[react-router] Server build file not found in manifest` 处失败。
+
+### 本地预览
+
+```bash
+npm run worker:dev      # wrangler dev → http://localhost:8787
+npm run preview         # 纯静态服务器 → http://localhost:4173（e2e 用）
+```
+
+`worker:dev` 跑的是 Workers 运行时，会应用 `_headers`；`preview` 只是把 `dist/` 当普通静态目录服务，用于离线 e2e。
+
+### 构建与部署
+
+```bash
+npm ci
+npm run build           # → dist/
+npm run deploy          # = wrangler deploy（首次需 wrangler login 或 CLOUDFLARE_API_TOKEN）
+```
+
+Workers Builds（Cloudflare 控制台连接 GitHub 仓库）填：
+
+| 设置 | 值 |
+| --- | --- |
+| Root directory | `/`（仓库根就是站点根） |
+| Build command | `npm ci && npm run build` |
+| Deploy command | `npx wrangler deploy` |
+| 环境变量 | `SITE_URL=https://<域名>`（构建期注入）；可选 `VITE_ASSET_BASE_URL`、`BUILD_DATE` |
+
+`SITE_URL` 必须在构建期可见；Workers Builds 里配置的变量对构建命令可用。部署完成后可用
+`node scripts/verify-deploy.mjs --base https://<域名>` 逐项检查。
+
+### Cloudflare Pages（备选）
+
+如果仍用 Pages：Build output directory 填 `dist`，**HTML handling 选 Drop trailing slash**，
+然后用 `CF_PAGES_PROJECT=<项目名> npm run deploy:pages`（`scripts/deploy.mjs` 会先校验产物）。
+
 
 ### 环境变量
 
-构建期（Pages 项目设置 → Variables，或本地 `.env.local`）：
+构建期（Workers Builds / Pages 项目设置 → Variables，或本地 `.env.local`）：
 
 | 变量 | 必填 | 作用 |
 | --- | --- | --- |
@@ -123,33 +167,21 @@ npm run e2e:ci                    # 构建 + 测试（CI 用）
 | `VITE_ASSET_BASE_URL` | 否 | 图标域名，默认 `https://bl-resource.cracklewis.site` |
 | `BUILD_DATE` | 否 | 固定 sitemap 静态页的 `lastmod`（`YYYY-MM-DD`），用于可复现构建 |
 | `SOURCE_DATE_EPOCH` | 否 | 同上，标准可复现构建变量（Unix 秒）；`BUILD_DATE` 优先 |
-| `CF_PAGES_PROJECT` | 否 | 只有 `npm run deploy` 读它，**不需要**配进 Pages 环境变量 |
+| `CF_PAGES_PROJECT` | 否 | 只有 `npm run deploy:pages`（Pages 备选方案）读它 |
 
 `SITE_URL` 在 `site-url.ts` 里归一化（`https://a.com/` → `https://a.com`），
 `assert-build` 依赖这个行为：预渲染出的 `og:url` 必须与它逐字相同。
 
-### 部署命令
+### 响应头
 
-```bash
-npm run build
-npm run deploy                    # 校验产物后调用 wrangler pages deploy
-npm run deploy -- --dry-run       # 只打印命令与产物大小，不上传
-npm run deploy -- --branch preview
-```
-
-`scripts/deploy.mjs` 先校验 `dist/index.html`、`dist/404.html`、`dist/data/cards.json`、
-`dist/llms.txt`、`dist/sitemap.xml` 存在且非空，再要求 `CF_PAGES_PROJECT`，最后执行
-`npx wrangler pages deploy dist --project-name <CF_PAGES_PROJECT> --branch main`。
-缺产物或缺项目名都会以中文提示退出 1，不会上传半成品。
-
-响应头由 `public/_headers`（构建后落在 `dist/_headers`）声明：
+响应头由 `public/_headers`（构建后落在 `dist/_headers`）声明，Workers 静态资源与 Pages 都支持：
 
 - 全站 `X-Content-Type-Options: nosniff`、`Referrer-Policy: strict-origin-when-cross-origin`、
   最小化 `Permissions-Policy`、`X-Frame-Options: DENY`（由 `/*` 供给）；
 - `/assets/*` 一年 `immutable`；`/data/*` 5 分钟。
 
-HTML **不单独声明缓存**，沿用 Cloudflare Pages 的默认值 `public, max-age=0, must-revalidate`
-（每次导航都回源校验，配合 ETag 返回 304）。原因：`_headers` 按请求 URL 匹配，而 Pages 会把
+HTML **不单独声明缓存**，沿用 Workers/Pages 静态资源的默认值 `public, max-age=0, must-revalidate`
+（每次导航都回源校验，配合 ETag 返回 304）。原因：`_headers` 按请求 URL 匹配，而两者都会把
 `*/index.html` 的请求重定向到无扩展名的路由，真实导航请求是 `/`、`/tier`、`/blog/<slug>`，
 没有一条以 `.html` 结尾，`/*.html` 规则永远不会命中；也不要用 `/*/index.html` 兜底。
 
@@ -158,7 +190,7 @@ hash / nonce 方案再加。
 
 ### 部署后验证
 
-部署完成（或本地 `npm run preview`）后，用同一个脚本按线上实际行为逐项检查：
+部署完成（或本地 `npm run worker:dev` / `npm run preview`）后，用同一个脚本按线上实际行为逐项检查：
 
 ```bash
 cd site

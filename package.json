@@ -20,7 +20,9 @@
     "data": "node scripts/export-data.mjs",
     "predev": "node scripts/sync-data.mjs",
     "prebuild": "node scripts/sync-data.mjs",
-    "deploy": "node scripts/deploy.mjs"
+    "deploy": "wrangler deploy",
+    "worker:dev": "wrangler dev",
+    "deploy:pages": "node scripts/deploy.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
