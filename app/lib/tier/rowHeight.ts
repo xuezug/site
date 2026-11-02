@@ -5,7 +5,7 @@
  */
 
 export const ROW_HEIGHT_KEY = 'bl.tier.rowHeight.v1';
-export const ROW_HEIGHT_MIN = 128;
+export const ROW_HEIGHT_MIN = 80;
 export const ROW_HEIGHT_MAX = 320;
 export const ROW_HEIGHT_DEFAULT = 128;
 export const ROW_HEIGHT_STEP = 8;

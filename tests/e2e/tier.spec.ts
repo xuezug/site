@@ -131,9 +131,14 @@ test.describe('节奏榜（/tier）', () => {
 
     await page.locator('summary[aria-label="调节行高"]').click();
     const slider = page.getByLabel('行高', { exact: true });
+    await expect(slider).toHaveAttribute('min', '80');
+
     await slider.focus();
     await page.keyboard.press('Home');
-    for (let i = 0; i < 9; i += 1) {
+    await expect(slider).toHaveValue('80');
+    expect((await row.boundingBox())!.height).toBeCloseTo(80, 0);
+
+    for (let i = 0; i < 15; i += 1) {
       await page.keyboard.press('ArrowRight');
     }
     await expect(slider).toHaveValue('200');
@@ -146,6 +151,14 @@ test.describe('节奏榜（/tier）', () => {
     await page.locator('summary[aria-label="调节行高"]').click();
     await page.getByRole('button', { name: '恢复默认（128px）' }).click();
     expect((await tierRow(page, 't-a').boundingBox())!.height).toBeCloseTo(128, 0);
+
+    // The placed card fills the row's content box (row minus 8px padding ×2
+    // and 1px borders ×2), i.e. thumbnail + overlaid name = row height.
+    await placeWithMenu(page, poolCards(page).first(), 'S');
+    const rowS = await tierRow(page, 't-s').boundingBox();
+    const card = await placedCards(page, 't-s').first().boundingBox();
+    expect(card!.height).toBeCloseTo(rowS!.height - 18, 0);
+    expect(card!.width).toBeCloseTo(card!.height, 0);
   });
 
   test('筛选：火 + 5★ 得 126 张，仅看未上榜排除已上榜卡片', async ({ page }) => {

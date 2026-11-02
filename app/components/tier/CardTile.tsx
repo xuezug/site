@@ -15,10 +15,9 @@ export type CardFaceSize = 'pool' | 'card' | 'overlay';
 const SIZE_CLASSES: Record<CardFaceSize, string> = {
   // Fluid width: the pool grid decides the column count (4/6/8 per design §6.1).
   pool: 'w-full',
-  // Fixed width inside a tier row. One size at every breakpoint: the row's
-  // label column already sets a ~126px baseline, and a wider card (the old
-  // 112/144px) made rows grow when a card was dropped in.
-  card: 'w-[88px]',
+  // Tier cards scale with the row height: square thumbnail with the name
+  // overlaid, so thumbnail + label fill the row's content box exactly.
+  card: 'bl-tier-card',
   overlay: 'w-[160px]',
 };
 
@@ -49,6 +48,7 @@ export function CardFace({ card, size = 'pool', dimmed = false, badge, className
   const color = attributeById.get(card.attribute)?.color;
   const alt = `${card.name}（${card.star} 星 ${label}）`;
   const [broken, setBroken] = useState(false);
+  const isTierCard = size === 'card';
 
   return (
     <div
@@ -65,7 +65,10 @@ export function CardFace({ card, size = 'pool', dimmed = false, badge, className
         <div
           role="img"
           aria-label={alt}
-          className="grid aspect-square w-full place-items-center bg-[#2a2a33] text-lg font-semibold text-[var(--bl-muted)]"
+          className={cn(
+            'grid place-items-center bg-[#2a2a33] text-lg font-semibold text-[var(--bl-muted)]',
+            isTierCard ? 'h-full w-full' : 'aspect-square w-full',
+          )}
         >
           {card.name.slice(0, 1)}
         </div>
@@ -80,19 +83,28 @@ export function CardFace({ card, size = 'pool', dimmed = false, badge, className
           decoding="async"
           draggable={false}
           onError={() => setBroken(true)}
-          className="block aspect-square w-full object-cover"
+          className={cn('block object-cover', isTierCard ? 'h-full w-full' : 'aspect-square w-full')}
         />
       )}
       {color === undefined ? null : (
         <span
           aria-hidden="true"
-          className="block h-0.5 w-full"
+          className={cn(
+            'block w-full',
+            isTierCard ? 'absolute inset-x-0 top-0 h-0.5' : 'h-0.5',
+          )}
           style={{ backgroundColor: color }}
         />
       )}
-      <p className="truncate px-1 py-0.5 pr-8 text-[11px] leading-tight text-[var(--bl-text)]">
-        {card.name}
-      </p>
+      {isTierCard ? (
+        <p className="absolute inset-x-0 bottom-0 truncate bg-gradient-to-t from-black/85 via-black/40 to-transparent px-1 pb-0.5 pr-7 text-[10px] leading-tight text-white">
+          {card.name}
+        </p>
+      ) : (
+        <p className="truncate px-1 py-0.5 pr-8 text-[11px] leading-tight text-[var(--bl-text)]">
+          {card.name}
+        </p>
+      )}
       {badge !== undefined ? (
         <span className="absolute right-1 top-1 rounded bg-black/70 px-1 text-[10px] leading-4 text-white">
           {badge}
@@ -280,7 +292,7 @@ export function CardMenu({ card, tiers, currentTierId, onAssign }: CardMenuProps
         aria-controls={open ? menuId : undefined}
         onClick={toggleMenu}
         // 32px visual button with a 44px hit area via the `after:` inset.
-        className="relative grid h-8 w-8 place-items-center rounded-full border border-[color:var(--bl-border-strong)] bg-black/70 text-sm leading-none text-white shadow after:absolute after:-inset-1.5 after:rounded-full after:content-[''] hover:bg-black/85"
+        className="bl-card-menu-btn relative grid place-items-center rounded-full border border-[color:var(--bl-border-strong)] bg-black/70 text-sm leading-none text-white shadow after:absolute after:-inset-1.5 after:rounded-full after:content-[''] hover:bg-black/85"
       >
         ＋
       </button>

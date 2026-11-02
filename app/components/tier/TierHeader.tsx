@@ -123,7 +123,7 @@ export function TierHeader({
             }
             commit();
           }}
-          className="min-h-8 w-full rounded border border-[color:var(--bl-accent)] bg-[var(--bl-bg)] px-1 text-sm font-semibold text-[var(--bl-text)]"
+          className="bl-tier-name w-full rounded border border-[color:var(--bl-accent)] bg-[var(--bl-bg)] px-1 text-sm font-semibold text-[var(--bl-text)]"
         />
       ) : (
         <button
@@ -134,16 +134,16 @@ export function TierHeader({
             setEditing(true);
           }}
           title="点击改名"
-          className="min-h-8 w-full whitespace-normal break-words rounded px-1 text-left text-sm font-semibold leading-tight text-[var(--bl-text)] hover:bg-black/20"
+          className="bl-tier-name w-full whitespace-normal break-words rounded px-1 text-left text-sm font-semibold leading-tight text-[var(--bl-text)] hover:bg-black/20"
         >
           {tier.name}
         </button>
       )}
 
-      <details className="relative">
+      <details className="bl-tier-settings relative">
         <summary
           aria-label={`${tier.name} 档位设置`}
-          className="grid min-h-9 cursor-pointer list-none place-items-center rounded border border-[color:var(--bl-border)] text-[11px] font-medium text-[var(--bl-text)] marker:hidden hover:bg-black/20"
+          className="grid cursor-pointer list-none place-items-center rounded border border-[color:var(--bl-border)] text-[11px] font-medium text-[var(--bl-text)] marker:hidden hover:bg-black/20"
         >
           设置
         </summary>

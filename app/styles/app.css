@@ -41,6 +41,32 @@
   }
 }
 
+/* A placed card fills the row's content box: row height minus the drop area's
+ * 8px padding (×2) and 1px border (×2). The thumbnail is square and the name
+ * is overlaid, so "thumbnail + text" equals the row height at any slider value
+ * (down to 80px). */
+.bl-tier-card {
+  width: calc(var(--bl-tier-row-h, 128px) - 18px);
+  height: calc(var(--bl-tier-row-h, 128px) - 18px);
+}
+
+/* Compact the name/settings controls in short rows so an 80px row really is
+ * 80px instead of being floored by the header column. */
+.bl-tier-name {
+  min-height: clamp(24px, calc(var(--bl-tier-row-h, 128px) * 0.25), 32px);
+}
+
+.bl-tier-settings > summary {
+  min-height: clamp(24px, calc(var(--bl-tier-row-h, 128px) * 0.28), 36px);
+}
+
+/* The「＋」button shrinks with very short rows so it does not swallow the
+ * 62px card at the 80px minimum. */
+.bl-card-menu-btn {
+  width: clamp(24px, calc(var(--bl-tier-row-h, 128px) * 0.25), 32px);
+  height: clamp(24px, calc(var(--bl-tier-row-h, 128px) * 0.25), 32px);
+}
+
 html {
   background: var(--bl-bg);
   /* Reserve the scrollbar gutter even when a drag lock hides the scrollbar
