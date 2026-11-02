@@ -216,6 +216,33 @@ describe('tier editing', () => {
     expect(screen.getByLabelText('S 档颜色')).toHaveValue('#ec4899');
   });
 
+  it('previews a picker drag immediately but commits it after it settles', () => {
+    vi.useFakeTimers();
+    try {
+      renderBoard();
+      openSettings('S');
+
+      const input = screen.getByLabelText('S 档颜色');
+      fireEvent.change(input, { target: { value: '#14b8a6' } });
+
+      // Preview is instant; nothing has been written to the board yet (no
+      // 916-card re-render for every native picker input event).
+      expect(input).toHaveValue('#14b8a6');
+      expect(readCurrent()).toBeNull();
+
+      act(() => {
+        vi.advanceTimersByTime(200);
+      });
+      act(() => {
+        vi.advanceTimersByTime(400);
+      });
+
+      expect(readCurrent()?.tiers.find((tier) => tier.id === 't-s')?.color).toBe('#14b8a6');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('moves a tier up and down and disables the edge directions', () => {
     renderBoard();
 

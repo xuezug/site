@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { Ref } from 'react';
 import { TIER_COLORS, type Tier } from '../../lib/tier/model';
 
@@ -37,8 +37,44 @@ export function TierHeader({
   // `null` means "mirror `tier.name`"; a string is the in-progress edit, which
   // may legitimately be empty while the user clears the field.
   const [draft, setDraft] = useState<string | null>(null);
+  // Live colour while the native picker is being dragged. Board updates (and
+  // the 916-card re-render they trigger) are deferred until the drag settles.
+  const [draftColor, setDraftColor] = useState<{ base: string; value: string } | null>(null);
+  const colorTimer = useRef<number | null>(null);
   const skipBlur = useRef(false);
   const removeHintId = `tier-remove-hint-${tier.id}`;
+
+  const activeColor =
+    draftColor !== null && draftColor.base === tier.color ? draftColor.value : tier.color;
+
+  const queueColor = (value: string): void => {
+    setDraftColor({ base: tier.color, value });
+    if (colorTimer.current !== null) {
+      window.clearTimeout(colorTimer.current);
+    }
+    colorTimer.current = window.setTimeout(() => {
+      colorTimer.current = null;
+      onChangeColor(tier.id, value);
+    }, 180);
+  };
+
+  const commitColor = (value: string): void => {
+    if (colorTimer.current !== null) {
+      window.clearTimeout(colorTimer.current);
+      colorTimer.current = null;
+    }
+    setDraftColor(null);
+    onChangeColor(tier.id, value);
+  };
+
+  useEffect(
+    () => () => {
+      if (colorTimer.current !== null) {
+        window.clearTimeout(colorTimer.current);
+      }
+    },
+    [],
+  );
 
   const commit = (): void => {
     const next = (draft ?? tier.name).trim();
@@ -59,8 +95,8 @@ export function TierHeader({
       ref={rootRef}
       className="flex flex-col gap-1.5 rounded-lg border border-[color:var(--bl-border)] p-1.5"
       style={{
-        borderLeft: `6px solid ${tier.color}`,
-        backgroundColor: `color-mix(in srgb, ${tier.color} 16%, transparent)`,
+        borderLeft: `6px solid ${activeColor}`,
+        backgroundColor: `color-mix(in srgb, ${activeColor} 16%, transparent)`,
       }}
     >
       {editing ? (
@@ -116,16 +152,16 @@ export function TierHeader({
           <div className="flex flex-col gap-1">
             <p className="text-[11px] text-[var(--bl-muted)]">预设颜色</p>
             <div className="grid grid-cols-4 gap-1">
-              {TIER_COLORS.map((color) => (
+              {TIER_COLORS.map((swatch) => (
                 <button
-                  key={color}
+                  key={swatch}
                   type="button"
-                  aria-label={`颜色 ${color}`}
-                  aria-pressed={tier.color === color}
-                  onClick={() => onChangeColor(tier.id, color)}
-                  style={{ backgroundColor: color }}
+                  aria-label={`颜色 ${swatch}`}
+                  aria-pressed={activeColor === swatch}
+                  onClick={() => commitColor(swatch)}
+                  style={{ backgroundColor: swatch }}
                   className={
-                    tier.color === color
+                    activeColor === swatch
                       ? 'h-8 w-full rounded border-2 border-white'
                       : 'h-8 w-full rounded border border-transparent'
                   }
@@ -136,9 +172,9 @@ export function TierHeader({
               自定义
               <input
                 type="color"
-                value={tier.color}
+                value={activeColor}
                 aria-label={`${tier.name} 档颜色`}
-                onChange={(event) => onChangeColor(tier.id, event.target.value)}
+                onChange={(event) => queueColor(event.target.value)}
                 className="h-8 w-20 cursor-pointer rounded border border-[color:var(--bl-border)] bg-transparent p-0.5"
               />
             </label>
