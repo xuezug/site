@@ -31,6 +31,8 @@
   --bl-radius: 12px;
   /* Tier name column; the board overrides this inline after a resize. */
   --bl-tier-name-w: 64px;
+  /* Minimum height of each tier row; adjusted from the toolbar. */
+  --bl-tier-row-h: 128px;
 }
 
 @media (min-width: 768px) {

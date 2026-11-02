@@ -124,6 +124,30 @@ test.describe('节奏榜（/tier）', () => {
     expect((await handle.boundingBox())!.x).toBeCloseTo(before!.x, 0);
   });
 
+  test('行高滑块调整所有档位并持久化', async ({ page }) => {
+    await openTier(page);
+    const row = tierRow(page, 't-a');
+    expect((await row.boundingBox())!.height).toBeCloseTo(128, 0);
+
+    await page.locator('summary[aria-label="调节行高"]').click();
+    const slider = page.getByLabel('行高', { exact: true });
+    await slider.focus();
+    await page.keyboard.press('Home');
+    for (let i = 0; i < 9; i += 1) {
+      await page.keyboard.press('ArrowRight');
+    }
+    await expect(slider).toHaveValue('200');
+    expect((await row.boundingBox())!.height).toBeCloseTo(200, 0);
+
+    await page.reload();
+    await page.getByTestId('pool-card').first().waitFor();
+    expect((await tierRow(page, 't-a').boundingBox())!.height).toBeCloseTo(200, 0);
+
+    await page.locator('summary[aria-label="调节行高"]').click();
+    await page.getByRole('button', { name: '恢复默认（128px）' }).click();
+    expect((await tierRow(page, 't-a').boundingBox())!.height).toBeCloseTo(128, 0);
+  });
+
   test('筛选：火 + 5★ 得 126 张，仅看未上榜排除已上榜卡片', async ({ page }) => {
     await openTier(page);
 

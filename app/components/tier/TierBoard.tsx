@@ -16,6 +16,8 @@ import { ImportDialog } from './ImportDialog';
 import { SnapshotPanel } from './SnapshotPanel';
 import { TierRow } from './TierRow';
 import { useNameWidth } from './useNameWidth';
+import { useRowHeight } from './useRowHeight';
+import { RowHeightControl } from './RowHeightControl';
 import { Button } from '../ui/Button';
 import { useToast } from '../ui/Toast';
 import type { Card } from '../../lib/cards/types';
@@ -108,6 +110,7 @@ export function TierBoard({
   const [importOpen, setImportOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
   const { width: nameWidth, setWidth: setNameWidth } = useNameWidth();
+  const { height: rowHeight, setHeight: setRowHeight } = useRowHeight();
   const rowsRef = useRef<HTMLDivElement>(null);
 
   // Resizing the name column must not re-render the 916-card pool on every
@@ -126,6 +129,28 @@ export function TierBoard({
       setNameWidth(px);
     },
     [setNameWidth],
+  );
+
+  const previewRowHeight = useCallback((px: number | null): void => {
+    const element = rowsRef.current;
+    if (element === null) {
+      return;
+    }
+    if (px === null) {
+      element.style.removeProperty('--bl-tier-row-h');
+    } else {
+      element.style.setProperty('--bl-tier-row-h', `${px}px`);
+    }
+  }, []);
+
+  const commitRowHeight = useCallback(
+    (px: number | null): void => {
+      if (px === null) {
+        rowsRef.current?.style.removeProperty('--bl-tier-row-h');
+      }
+      setRowHeight(px);
+    },
+    [setRowHeight],
   );
 
   const titleValue = titleDraft ?? board.title;
@@ -392,6 +417,11 @@ export function TierBoard({
             <Button size="sm" variant="ghost" onClick={() => setConfirm({ kind: 'reset' })}>
               重置
             </Button>
+            <RowHeightControl
+              value={rowHeight}
+              onPreview={previewRowHeight}
+              onCommit={commitRowHeight}
+            />
             <Button
               size="sm"
               onClick={() => dispatch({ type: 'addTier' })}
@@ -419,9 +449,10 @@ export function TierBoard({
             ref={rowsRef}
             className="flex flex-col gap-2"
             style={
-              nameWidth === null
-                ? undefined
-                : ({ '--bl-tier-name-w': `${nameWidth}px` } as CSSProperties)
+              {
+                ...(nameWidth === null ? {} : { '--bl-tier-name-w': `${nameWidth}px` }),
+                ...(rowHeight === null ? {} : { '--bl-tier-row-h': `${rowHeight}px` }),
+              } as CSSProperties
             }
           >
             {tiers.map((tier, index) => (

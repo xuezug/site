@@ -186,6 +186,20 @@ test.describe('移动端 375×667', () => {
     await page.keyboard.press('Escape');
   });
 
+  test('行高面板在 375px 内不溢出', async ({ page }) => {
+    await openTier(page);
+    await page.locator('summary[aria-label="调节行高"]').click();
+    const panel = page.getByTestId('row-height-panel');
+    await expect(panel).toBeVisible();
+    const box = await panel.boundingBox();
+    if (box === null) {
+      throw new Error('row-height panel has no box');
+    }
+    expect(box.x).toBeGreaterThanOrEqual(0);
+    expect(box.x + box.width).toBeLessThanOrEqual(375);
+    expect(box.y + box.height).toBeLessThanOrEqual(667 + 1);
+  });
+
   test('抽屉菜单：Esc 关闭并归还焦点，点击条目完成导航', async ({ page }) => {
     await openTier(page);
 

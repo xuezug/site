@@ -209,7 +209,7 @@ export function TierRow({
       <div
         ref={setNodeRef}
         className={cn(
-          'flex min-h-[128px] flex-wrap content-start gap-1.5 rounded-lg border border-dashed p-2 transition-colors',
+          'flex min-h-[var(--bl-tier-row-h,128px)] flex-wrap content-start gap-1.5 rounded-lg border border-dashed p-2 transition-colors',
           isOver
             ? 'border-[color:var(--bl-accent)] bg-[var(--bl-accent-soft)]'
             : 'border-[color:var(--bl-border)] bg-[var(--bl-panel)]',
