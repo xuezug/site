@@ -7,6 +7,7 @@ import { attributeById } from '../../lib/cards/taxonomy';
 import type { Card } from '../../lib/cards/types';
 import { cn } from '../../lib/cn';
 import { poolCardDndId } from '../../lib/tier/dnd';
+import { computeMenuPlacement, type MenuPlacement } from '../../lib/tier/menuPlacement';
 import type { Tier } from '../../lib/tier/model';
 
 export type CardFaceSize = 'pool' | 'card' | 'overlay';
@@ -118,9 +119,26 @@ type CardMenuProps = {
  */
 export function CardMenu({ card, tiers, currentTierId, onAssign }: CardMenuProps) {
   const [open, setOpen] = useState(false);
+  const [placement, setPlacement] = useState<MenuPlacement | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuId = useId();
+
+  const measurePlacement = useCallback((): MenuPlacement | null => {
+    const container = containerRef.current;
+    if (container === null) {
+      return null;
+    }
+    // The positioned container is the 32px「＋」wrapper; its parent is the
+    // whole card, whose left/right edges the menu aligns to.
+    const card = container.parentElement ?? container;
+    return computeMenuPlacement({
+      card: card.getBoundingClientRect(),
+      containerLeft: container.getBoundingClientRect().left,
+      viewportWidth: window.innerWidth,
+      viewportHeight: window.innerHeight,
+    });
+  }, []);
 
   const closeMenu = useCallback((refocusTrigger: boolean) => {
     setOpen(false);
@@ -128,6 +146,19 @@ export function CardMenu({ card, tiers, currentTierId, onAssign }: CardMenuProps
       triggerRef.current?.focus();
     }
   }, []);
+
+  const toggleMenu = useCallback((): void => {
+    if (open) {
+      closeMenu(false);
+      return;
+    }
+    const next = measurePlacement();
+    if (next === null) {
+      return;
+    }
+    setPlacement(next);
+    setOpen(true);
+  }, [closeMenu, measurePlacement, open]);
 
   // Move focus into the menu as soon as it opens (menu button pattern).
   useEffect(() => {
@@ -175,6 +206,26 @@ export function CardMenu({ card, tiers, currentTierId, onAssign }: CardMenuProps
       document.removeEventListener('focusin', handleFocusIn);
     };
   }, [open, closeMenu]);
+
+  // Keep the menu inside the viewport if the page scrolls or the window
+  // resizes while it is open (mobile URL bar changes count as resize).
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    const reposition = (): void => {
+      const next = measurePlacement();
+      if (next !== null) {
+        setPlacement(next);
+      }
+    };
+    window.addEventListener('resize', reposition);
+    window.addEventListener('scroll', reposition, true);
+    return () => {
+      window.removeEventListener('resize', reposition);
+      window.removeEventListener('scroll', reposition, true);
+    };
+  }, [open, measurePlacement]);
 
   const choose = (tierId: string | null): void => {
     setOpen(false);
@@ -227,20 +278,24 @@ export function CardMenu({ card, tiers, currentTierId, onAssign }: CardMenuProps
         aria-haspopup="menu"
         aria-expanded={open}
         aria-controls={open ? menuId : undefined}
-        onClick={() => setOpen((current) => !current)}
+        onClick={toggleMenu}
         // 32px visual button with a 44px hit area via the `after:` inset.
         className="relative grid h-8 w-8 place-items-center rounded-full border border-[color:var(--bl-border-strong)] bg-black/70 text-sm leading-none text-white shadow after:absolute after:-inset-1.5 after:rounded-full after:content-[''] hover:bg-black/85"
       >
         ＋
       </button>
 
-      {open ? (
+      {open && placement !== null ? (
         <div
           id={menuId}
           role="menu"
           aria-label={`${card.name} 档位菜单`}
           onKeyDown={handleMenuKeyDown}
-          className="absolute bottom-full right-0 z-30 mb-1 flex max-h-64 w-40 flex-col gap-0.5 overflow-y-auto rounded-lg border border-[color:var(--bl-border-strong)] bg-[var(--bl-panel)] p-1 shadow-xl"
+          style={{ left: placement.left, maxHeight: placement.maxHeight }}
+          className={cn(
+            'absolute z-30 flex w-40 flex-col gap-0.5 overflow-y-auto rounded-lg border border-[color:var(--bl-border-strong)] bg-[var(--bl-panel)] p-1 shadow-xl',
+            placement.openUp ? 'bottom-full mb-1' : 'top-full mt-1',
+          )}
         >
           {tiers.map((tier) => (
             <button

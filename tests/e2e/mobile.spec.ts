@@ -144,6 +144,48 @@ test.describe('移动端 375×667', () => {
     expect(post.body).toBeLessThanOrEqual(375);
   });
 
+  test('「＋」菜单在左右边缘都不会超出视口', async ({ page }) => {
+    await openTier(page);
+    const viewport = page.viewportSize();
+    if (viewport === null) {
+      throw new Error('mobile viewport missing');
+    }
+
+    const assertInsideViewport = async (): Promise<void> => {
+      const menu = page.getByRole('menu');
+      await expect(menu).toBeVisible();
+      const box = await menu.boundingBox();
+      if (box === null) {
+        throw new Error('menu has no box');
+      }
+      expect(box.x).toBeGreaterThanOrEqual(0);
+      expect(box.x + box.width).toBeLessThanOrEqual(viewport.width);
+      expect(box.y).toBeGreaterThanOrEqual(0);
+      expect(box.y + box.height).toBeLessThanOrEqual(viewport.height + 1);
+    };
+
+    const cards = poolCards(page);
+
+    // Leftmost card of the first row: the old `right-0` menu ran off-screen.
+    const leftCard = cards.first();
+    await leftCard.scrollIntoViewIfNeeded();
+    await leftCard.hover();
+    await leftCard.getByRole('button', { name: /放入档位/ }).click();
+    await assertInsideViewport();
+    const leftBox = await page.getByRole('menu').boundingBox();
+    const leftCardBox = await leftCard.boundingBox();
+    expect(leftBox!.x).toBeCloseTo(leftCardBox!.x, 0);
+    await page.keyboard.press('Escape');
+
+    // Rightmost card of the same row (4 columns at 375px).
+    const rightCard = cards.nth(3);
+    await rightCard.scrollIntoViewIfNeeded();
+    await rightCard.hover();
+    await rightCard.getByRole('button', { name: /放入档位/ }).click();
+    await assertInsideViewport();
+    await page.keyboard.press('Escape');
+  });
+
   test('抽屉菜单：Esc 关闭并归还焦点，点击条目完成导航', async ({ page }) => {
     await openTier(page);
 
