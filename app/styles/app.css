@@ -29,6 +29,14 @@
   --bl-sidebar-w: 220px;
   --bl-topbar-h: 56px;
   --bl-radius: 12px;
+  /* Tier name column; the board overrides this inline after a resize. */
+  --bl-tier-name-w: 64px;
+}
+
+@media (min-width: 768px) {
+  :root {
+    --bl-tier-name-w: 88px;
+  }
 }
 
 html {

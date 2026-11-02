@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import type { CSSProperties } from 'react';
 import {
   DndContext,
   KeyboardSensor,
@@ -14,6 +15,7 @@ import { BoardDragOverlay } from './DragOverlay';
 import { ImportDialog } from './ImportDialog';
 import { SnapshotPanel } from './SnapshotPanel';
 import { TierRow } from './TierRow';
+import { useNameWidth } from './useNameWidth';
 import { Button } from '../ui/Button';
 import { useToast } from '../ui/Toast';
 import type { Card } from '../../lib/cards/types';
@@ -105,6 +107,7 @@ export function TierBoard({
   const [confirm, setConfirm] = useState<ConfirmState | null>(null);
   const [importOpen, setImportOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const { width: nameWidth, setWidth: setNameWidth } = useNameWidth();
 
   const titleValue = titleDraft ?? board.title;
   const activeSerial = dragging?.serial ?? null;
@@ -393,7 +396,14 @@ export function TierBoard({
             {DND_INSTRUCTIONS}
           </p>
 
-          <div className="flex flex-col gap-2">
+          <div
+            className="flex flex-col gap-2"
+            style={
+              nameWidth === null
+                ? undefined
+                : ({ '--bl-tier-name-w': `${nameWidth}px` } as CSSProperties)
+            }
+          >
             {tiers.map((tier, index) => (
               <TierRow
                 key={tier.id}
@@ -411,6 +421,8 @@ export function TierBoard({
                 onMoveTier={handleMoveTier}
                 onRemoveTier={handleRemoveTier}
                 onAssign={moveCard}
+                nameWidth={nameWidth}
+                onResizeNameWidth={setNameWidth}
               />
             ))}
           </div>

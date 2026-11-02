@@ -77,6 +77,45 @@ test.describe('节奏榜（/tier）', () => {
     await page.mouse.up();
   });
 
+  test('名称列可拖动/键盘调整并持久化，颜色控件在设置面板内', async ({ page }) => {
+    await openTier(page);
+    const row = tierRow(page, 't-s');
+    const handle = row.getByRole('separator', { name: '调整 S 名称列宽度' });
+    const before = await handle.boundingBox();
+    expect(before).not.toBeNull();
+
+    // The colour picker now lives in 设置 instead of the header row.
+    const details = row.locator('details');
+    await expect(details.getByLabel('S 档颜色')).toHaveCount(1);
+    await row.locator('summary').click();
+    await expect(details.getByLabel('S 档颜色')).toBeVisible();
+
+    const y = before!.y + before!.height / 2;
+    await page.mouse.move(before!.x + 4, y);
+    await page.mouse.down();
+    await page.mouse.move(before!.x + 4 + 64, y, { steps: 6 });
+    await page.mouse.up();
+    const dragged = await handle.boundingBox();
+    expect(dragged!.x - before!.x).toBeGreaterThan(56);
+    expect(dragged!.x - before!.x).toBeLessThan(72);
+
+    // Persisted across a reload.
+    await page.reload();
+    await page.getByTestId('pool-card').first().waitFor();
+    const reloaded = await handle.boundingBox();
+    expect(reloaded!.x).toBeCloseTo(dragged!.x, 0);
+
+    // Keyboard: 8px per arrow press.
+    await handle.focus();
+    const beforeKey = (await handle.boundingBox())!.x;
+    await page.keyboard.press('ArrowRight');
+    expect((await handle.boundingBox())!.x - beforeKey).toBeCloseTo(8, 0);
+
+    // Double-click restores the responsive default (88px on desktop).
+    await handle.dblclick();
+    expect((await handle.boundingBox())!.x).toBeCloseTo(before!.x, 0);
+  });
+
   test('筛选：火 + 5★ 得 126 张，仅看未上榜排除已上榜卡片', async ({ page }) => {
     await openTier(page);
 

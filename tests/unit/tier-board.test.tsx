@@ -200,13 +200,17 @@ describe('tier editing', () => {
     expect(screen.getByLabelText('重命名档位 主力')).toBeInTheDocument();
   });
 
-  it('changes a tier colour from the native picker and from a preset swatch', () => {
+  it('changes a tier colour from the settings picker and from a preset swatch', () => {
     renderBoard();
+
+    openSettings('S');
+    const details = within(tierRow('t-s')).getByText('设置').closest('details');
+    expect(details).not.toBeNull();
+    expect(within(details as HTMLElement).getByLabelText('S 档颜色')).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText('S 档颜色'), { target: { value: '#14b8a6' } });
     expect(screen.getByLabelText('S 档颜色')).toHaveValue('#14b8a6');
 
-    openSettings('S');
     fireEvent.click(within(tierRow('t-s')).getByRole('button', { name: '颜色 #ec4899' }));
 
     expect(screen.getByLabelText('S 档颜色')).toHaveValue('#ec4899');

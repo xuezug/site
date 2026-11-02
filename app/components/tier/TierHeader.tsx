@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import type { Ref } from 'react';
 import { TIER_COLORS, type Tier } from '../../lib/tier/model';
 
 type TierHeaderProps = {
@@ -11,13 +12,15 @@ type TierHeaderProps = {
   onMove: (id: string, delta: -1 | 1) => void;
   onRemove: () => void;
   disabledRemove: boolean;
+  /** Lets the row measure this column when resizing it. */
+  rootRef?: Ref<HTMLDivElement>;
 };
 
 /**
- * The narrow left column of a tier row (64px on phones, 88px from `md`):
- * colour swatch, editable name, and a 「设置」 panel with presets, reorder and
- * delete. The panel is a native `<details>` so it needs no focus management,
- * and its 4-column palette still fits inside the 88px column.
+ * The narrow left column of a tier row (width comes from the board's
+ * `--bl-tier-name-w`, resizable via the handle in `TierRow`): editable name and
+ * a 「设置」 panel with colours, reorder and delete. The panel is a native
+ * `<details>` so it needs no focus management.
  */
 export function TierHeader({
   tier,
@@ -28,6 +31,7 @@ export function TierHeader({
   onMove,
   onRemove,
   disabledRemove,
+  rootRef,
 }: TierHeaderProps) {
   const [editing, setEditing] = useState(false);
   // `null` means "mirror `tier.name`"; a string is the in-progress edit, which
@@ -52,20 +56,13 @@ export function TierHeader({
 
   return (
     <div
+      ref={rootRef}
       className="flex flex-col gap-1.5 rounded-lg border border-[color:var(--bl-border)] p-1.5"
       style={{
         borderLeft: `6px solid ${tier.color}`,
         backgroundColor: `color-mix(in srgb, ${tier.color} 16%, transparent)`,
       }}
     >
-      <input
-        type="color"
-        value={tier.color}
-        aria-label={`${tier.name} 档颜色`}
-        onChange={(event) => onChangeColor(tier.id, event.target.value)}
-        className="h-8 w-full cursor-pointer rounded border border-[color:var(--bl-border)] bg-transparent p-0.5"
-      />
-
       {editing ? (
         <input
           autoFocus
@@ -101,7 +98,7 @@ export function TierHeader({
             setEditing(true);
           }}
           title="点击改名"
-          className="min-h-8 w-full truncate rounded px-1 text-left text-sm font-semibold text-[var(--bl-text)] hover:bg-black/20"
+          className="min-h-8 w-full whitespace-normal break-words rounded px-1 text-left text-sm font-semibold leading-tight text-[var(--bl-text)] hover:bg-black/20"
         >
           {tier.name}
         </button>
@@ -135,6 +132,16 @@ export function TierHeader({
                 />
               ))}
             </div>
+            <label className="mt-1 flex items-center justify-between gap-2 text-[11px] text-[var(--bl-muted)]">
+              自定义
+              <input
+                type="color"
+                value={tier.color}
+                aria-label={`${tier.name} 档颜色`}
+                onChange={(event) => onChangeColor(tier.id, event.target.value)}
+                className="h-8 w-20 cursor-pointer rounded border border-[color:var(--bl-border)] bg-transparent p-0.5"
+              />
+            </label>
           </div>
 
           <div className="flex flex-col gap-1">
