@@ -17,6 +17,7 @@ import { SnapshotPanel } from './SnapshotPanel';
 import { TierRow } from './TierRow';
 import { useNameWidth } from './useNameWidth';
 import { useRowHeight } from './useRowHeight';
+import { useCardMenuVisibility } from './useCardMenuVisibility';
 import { RowHeightControl } from './RowHeightControl';
 import { Button } from '../ui/Button';
 import { useToast } from '../ui/Toast';
@@ -111,6 +112,7 @@ export function TierBoard({
   const [exporting, setExporting] = useState(false);
   const { width: nameWidth, setWidth: setNameWidth } = useNameWidth();
   const { height: rowHeight, setHeight: setRowHeight } = useRowHeight();
+  const { visible: showCardMenu, setVisible: setShowCardMenu } = useCardMenuVisibility();
   const rowsRef = useRef<HTMLDivElement>(null);
 
   // Resizing the name column must not re-render the 916-card pool on every
@@ -417,6 +419,14 @@ export function TierBoard({
             <Button size="sm" variant="ghost" onClick={() => setConfirm({ kind: 'reset' })}>
               重置
             </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setShowCardMenu(!showCardMenu)}
+              title="显示/隐藏角色右下角的＋菜单（拖拽不受影响）"
+            >
+              {showCardMenu ? '隐藏 ＋' : '显示 ＋'}
+            </Button>
             <RowHeightControl
               value={rowHeight}
               onPreview={previewRowHeight}
@@ -475,11 +485,18 @@ export function TierBoard({
                 nameWidth={nameWidth}
                 onResizeNameWidth={commitNameWidth}
                 onPreviewNameWidth={previewNameWidth}
+                showMenu={showCardMenu}
               />
             ))}
           </div>
 
-          <CardPool cards={cards} tiers={tiers} placed={placed} onMove={moveCard} />
+          <CardPool
+            cards={cards}
+            tiers={tiers}
+            placed={placed}
+            onMove={moveCard}
+            showMenu={showCardMenu}
+          />
         </div>
 
         <BoardDragOverlay card={activeCard} badge={activeTier?.name} />

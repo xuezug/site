@@ -34,6 +34,8 @@ type TierRowProps = {
   onResizeNameWidth: (px: number | null) => void;
   /** Live width during a drag; writes the CSS variable without React state. */
   onPreviewNameWidth: (px: number) => void;
+  /** Toolbar toggle: show each card's「＋」menu. */
+  showMenu: boolean;
 };
 
 type PlacedCardProps = {
@@ -43,6 +45,7 @@ type PlacedCardProps = {
   tiers: readonly Tier[];
   placedSerialSet: ReadonlySet<number>;
   onAssign: (serial: number, tierId: string | null) => void;
+  showMenu: boolean;
 };
 
 function PlacedCard({
@@ -52,6 +55,7 @@ function PlacedCard({
   tiers,
   placedSerialSet,
   onAssign,
+  showMenu,
 }: PlacedCardProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: cardDndId(card.serial),
@@ -79,6 +83,7 @@ function PlacedCard({
       dragging={isDragging}
       testId="placed-card"
       style={style}
+      showMenu={showMenu}
     />
   );
 }
@@ -103,6 +108,7 @@ export function TierRow({
   nameWidth,
   onResizeNameWidth,
   onPreviewNameWidth,
+  showMenu,
 }: TierRowProps) {
   const { setNodeRef, isOver } = useDroppable({
     id: tierDndId(tier.id),
@@ -232,6 +238,7 @@ export function TierRow({
                   tiers={tiers}
                   placedSerialSet={placedSerialSet}
                   onAssign={onAssign}
+                  showMenu={showMenu}
                 />
               ))}
             </ul>

@@ -15,6 +15,8 @@ type CardPoolProps = {
   /** Serials that already sit in a tier; they stay in the pool, dimmed. */
   placed: ReadonlySet<number>;
   onMove: (serial: number, tierId: string | null) => void;
+  /** Toolbar toggle: show each card's「＋」menu. */
+  showMenu?: boolean;
 };
 
 /**
@@ -27,7 +29,7 @@ type CardPoolProps = {
  * set of cards. Dropping a card on the list still removes it from the board
  * (Task 6 behaviour, `pool` droppable id unchanged).
  */
-export function CardPool({ cards, tiers, placed, onMove }: CardPoolProps) {
+export function CardPool({ cards, tiers, placed, onMove, showMenu = true }: CardPoolProps) {
   const [filters, setFilters] = useState<PoolFilters>(EMPTY_FILTERS);
   const { items, filteredCount, placedCount, total } = useCardPool(cards, placed, filters);
   const { setNodeRef, isOver } = useDroppable({ id: POOL_ID });
@@ -106,6 +108,7 @@ export function CardPool({ cards, tiers, placed, onMove }: CardPoolProps) {
                 tiers={tiers}
                 placedTier={tierBySerial.get(card.serial) ?? null}
                 onAssign={onMove}
+                showMenu={showMenu}
               />
             ))}
           </ul>

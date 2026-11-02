@@ -161,6 +161,38 @@ test.describe('节奏榜（/tier）', () => {
     expect(card!.width).toBeCloseTo(card!.height, 0);
   });
 
+  test.describe('角色 ＋ 菜单开关（大视口以便同时看到卡池与档位）', () => {
+    test.use({ viewport: { width: 1440, height: 1400 } });
+
+    test('可隐藏/显示角色 ＋ 菜单并持久化，隐藏时仍可拖拽', async ({ page }) => {
+      await openTier(page);
+      const plusButtons = page.getByRole('button', { name: /放入档位/ });
+      await expect(plusButtons).toHaveCount(916);
+
+      await page.getByRole('button', { name: '隐藏 ＋' }).click();
+      await expect(plusButtons).toHaveCount(0);
+
+      // Drag-and-drop does not depend on the menu.
+      await dragToLocator(page, poolCards(page).first(), tierRow(page, 't-s'));
+      await expect(placedCards(page, 't-s')).toHaveCount(1);
+      await expect
+        .poll(async () => {
+          const board = await readStoredBoard(page);
+          return board?.tiers.find((tier) => tier.id === 't-s')?.cards.length ?? 0;
+        })
+        .toBe(1);
+
+      await page.reload();
+      await page.getByTestId('pool-card').first().waitFor();
+      await expect(page.getByRole('button', { name: /放入档位/ })).toHaveCount(0);
+      await expect(placedCards(page, 't-s')).toHaveCount(1);
+
+      await page.getByRole('button', { name: '显示 ＋' }).click();
+      // 916 pool tiles + the one placed card.
+      await expect(page.getByRole('button', { name: /放入档位/ })).toHaveCount(917);
+    });
+  });
+
   test('筛选：火 + 5★ 得 126 张，仅看未上榜排除已上榜卡片', async ({ page }) => {
     await openTier(page);
 

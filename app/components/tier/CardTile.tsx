@@ -353,6 +353,8 @@ type DraggableCardProps = {
   faceSize?: CardFaceSize;
   badge?: string;
   dragging?: boolean;
+  /** Toolbar toggle: show the「＋」menu (default true). */
+  showMenu?: boolean;
   dimmed?: boolean;
   /** Pool copy of an already placed card: labels itself「已在 X 档」. */
   poolOrigin?: boolean;
@@ -393,6 +395,7 @@ export function DraggableCard({
   faceSize = 'card',
   badge,
   dragging = false,
+  showMenu = true,
   dimmed = false,
   poolOrigin = false,
   faceClassName,
@@ -435,12 +438,14 @@ export function DraggableCard({
         />
       </div>
 
-      <CardMenu
-        card={card}
-        tiers={tiers}
-        currentTierId={currentTierId}
-        onAssign={onAssign}
-      />
+      {showMenu ? (
+        <CardMenu
+          card={card}
+          tiers={tiers}
+          currentTierId={currentTierId}
+          onAssign={onAssign}
+        />
+      ) : null}
     </li>
   );
 }
@@ -451,6 +456,8 @@ type PoolCardProps = {
   onAssign: (serial: number, tierId: string | null) => void;
   /** Tier this card currently sits in, if any. Placed cards stay in the pool. */
   placedTier?: Tier | null;
+  /** Toolbar toggle: show the「＋」menu (default true). */
+  showMenu?: boolean;
 };
 
 /**
@@ -461,7 +468,7 @@ type PoolCardProps = {
  * card is rendered in the pool *and* in its tier row, and two draggables
  * sharing one id would collide inside dnd-kit's registries.
  */
-export function PoolCard({ card, tiers, onAssign, placedTier = null }: PoolCardProps) {
+export function PoolCard({ card, tiers, onAssign, placedTier = null, showMenu = true }: PoolCardProps) {
   const placed = placedTier !== null;
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: poolCardDndId(card.serial),
@@ -484,6 +491,7 @@ export function PoolCard({ card, tiers, onAssign, placedTier = null }: PoolCardP
       dragging={isDragging}
       poolOrigin
       tabIndex={-1}
+      showMenu={showMenu}
       testId="pool-card"
       faceClassName="[content-visibility:auto] [contain-intrinsic-size:auto_144px]"
     />
