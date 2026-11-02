@@ -56,6 +56,23 @@ export type LoadPostsOptions = {
   siteUrl?: string;
 };
 
+/** A local image referenced by a post, copied next to the prerendered page. */
+export type PostAsset = {
+  /** Absolute path on disk. */
+  sourcePath: string;
+  /** POSIX path relative to the post folder, e.g. `images/cover.png`. */
+  relativePath: string;
+  /** Output path relative to the site root, e.g. `blog/tier-guide/cover.png`. */
+  outputPath: string;
+  /** Root-relative URL path, e.g. `/blog/tier-guide/cover.png`. */
+  url: string;
+};
+
+export type LoadPostsResult = {
+  posts: Post[];
+  assets: PostAsset[];
+};
+
 type Frontmatter = {
   title: string;
   date: string;
@@ -252,19 +269,79 @@ function readFrontmatter(filePath: string, rawData: unknown, rawMatter: string):
   };
 }
 
-/** File name without `.md` and the optional `oc-YYMMDD-` prefix. */
-function slugFromFilename(filePath: string): string {
-  const base = path.basename(filePath).replace(/\.md$/i, '');
-  const candidate = base.replace(FILE_DATE_PREFIX, '');
+/** File/folder name without the optional `oc-YYMMDD-` prefix. */
+function slugFromName(filePath: string, name: string, kind: 'file' | 'folder'): string {
+  const candidate = name.replace(FILE_DATE_PREFIX, '');
 
   if (!SLUG_PATTERN.test(candidate)) {
     throw new Error(
-      `${filePath}: cannot derive an ASCII slug from "${base}"; ` +
-        'rename the file or add an explicit "slug" to the frontmatter',
+      `${filePath}: cannot derive an ASCII slug from "${name}"; ` +
+        `rename the ${kind} or add an explicit "slug" to the frontmatter`,
     );
   }
 
   return candidate;
+}
+
+type PostSource = {
+  filePath: string;
+  /** Folder that owns relative image assets; null for legacy flat posts. */
+  assetDir: string | null;
+  /**
+   * Slug derived from the file or folder name. Lazy because an explicit
+   * frontmatter `slug` must allow non-ASCII file names.
+   */
+  defaultSlug: () => string;
+};
+
+/**
+ * Two layouts are accepted:
+ * - `content/blog/<slug>/index.md` plus images next to it (preferred);
+ * - `content/blog/<slug>.md` for posts without local images (legacy).
+ *
+ * Top-level directories without `index.md` are ignored, and directories
+ * starting with `_` are reserved (shared assets, scratch notes).
+ */
+function listPostSources(dir: string): PostSource[] {
+  if (!existsSync(dir) || !statSync(dir).isDirectory()) {
+    return [];
+  }
+
+  const entries = readdirSync(dir, { withFileTypes: true })
+    .filter((entry) => !entry.name.startsWith('.'))
+    .sort((left, right) => (left.name < right.name ? -1 : left.name > right.name ? 1 : 0));
+
+  const sources: PostSource[] = [];
+  for (const entry of entries) {
+    const entryPath = path.join(dir, entry.name);
+
+    if (entry.isFile() && /\.md$/i.test(entry.name)) {
+      sources.push({
+        filePath: entryPath,
+        assetDir: null,
+        defaultSlug: () => slugFromName(entryPath, entry.name.replace(/\.md$/i, ''), 'file'),
+      });
+      continue;
+    }
+
+    if (!entry.isDirectory() || entry.name.startsWith('_')) {
+      continue;
+    }
+
+    const indexFile = path.join(entryPath, 'index.md');
+    if (!existsSync(indexFile) || !statSync(indexFile).isFile()) {
+      // Not a post folder (shared assets, leftovers, …).
+      continue;
+    }
+
+    sources.push({
+      filePath: indexFile,
+      assetDir: entryPath,
+      defaultSlug: () => slugFromName(indexFile, entry.name, 'folder'),
+    });
+  }
+
+  return sources;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -414,11 +491,185 @@ function externalLinks(options: { siteUrl: string }) {
   };
 }
 
-async function compileMarkdown(markdown: string, siteUrl: string): Promise<CompiledMarkdown> {
+type AssetContext = {
+  filePath: string;
+  slug: string;
+  assetDir: string | null;
+  siteUrl: string;
+  assets: Map<string, PostAsset>;
+  /** Original Markdown URL → absolute URL, used to rewrite `post.source`. */
+  rewrites: Map<string, string>;
+};
+
+type MdastNode = {
+  type: string;
+  url?: string;
+  identifier?: string;
+  children?: MdastNode[];
+};
+
+function visitMdast(node: MdastNode, visit: (node: MdastNode) => void): void {
+  visit(node);
+  for (const child of node.children ?? []) {
+    visitMdast(child, visit);
+  }
+}
+
+/** `./cover.png` and `images/a b.png`; not `/root.png`, `#frag` or a scheme. */
+function isRelativeImageTarget(url: string): boolean {
+  const value = url.trim();
+  if (value === '' || value.startsWith('/') || value.startsWith('#') || value.startsWith('?')) {
+    return false;
+  }
+  // `data:`, `https:`, `mailto:`, … plus Windows drive letters (C:\…).
+  return !/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(value);
+}
+
+function splitUrlSuffix(url: string): { pathPart: string; suffix: string } {
+  const index = url.search(/[?#]/);
+  return index === -1
+    ? { pathPart: url, suffix: '' }
+    : { pathPart: url.slice(0, index), suffix: url.slice(index) };
+}
+
+function encodeRelativePath(relativePath: string): string {
+  return relativePath.split('/').map(encodeURIComponent).join('/');
+}
+
+/**
+ * Resolve a relative image against the post folder, register it for copying
+ * and return the URL used in HTML (`/blog/<slug>/…`).
+ *
+ * Referencing a missing file or escaping the post folder fails the build, so a
+ * typo cannot silently ship a broken image.
+ */
+function resolveImageAsset(target: string, context: AssetContext): { url: string; absoluteUrl: string } {
+  if (context.assetDir === null) {
+    throw new Error(
+      `${context.filePath}: relative image "${target}" requires the post to live in ` +
+        'content/blog/<slug>/index.md; move the Markdown file into its own folder',
+    );
+  }
+
+  const { pathPart, suffix } = splitUrlSuffix(target.trim());
+  if (pathPart === '') {
+    throw new Error(`${context.filePath}: image "${target}" has no file name`);
+  }
+
+  const normalized = pathPart.replace(/\\/g, '/');
+  const resolved = path.resolve(context.assetDir, normalized);
+  const relative = path.relative(context.assetDir, resolved);
+
+  if (relative === '' || relative.startsWith('..') || path.isAbsolute(relative)) {
+    throw new Error(`${context.filePath}: image "${target}" points outside the post folder`);
+  }
+  if (!existsSync(resolved) || !statSync(resolved).isFile()) {
+    throw new Error(`${context.filePath}: image "${target}" not found (expected ${resolved})`);
+  }
+
+  const relativePath = relative.split(path.sep).join('/');
+  const url = `/blog/${context.slug}/${encodeRelativePath(relativePath)}`;
+  const outputPath = `blog/${context.slug}/${relativePath}`;
+
+  context.assets.set(outputPath, {
+    sourcePath: resolved,
+    relativePath,
+    outputPath,
+    url,
+  });
+
+  return { url: `${url}${suffix}`, absoluteUrl: `${context.siteUrl}${url}${suffix}` };
+}
+
+/**
+ * Rewrite `image` nodes (and definitions used by `imageReference` nodes) before
+ * `remark-rehype` turns them into `<img src>`. Code blocks are not touched
+ * because only image AST nodes are visited.
+ */
+function rewriteRelativeImages(context: AssetContext) {
+  return (tree: MdastNode): void => {
+    const imageReferences = new Set<string>();
+    visitMdast(tree, (node) => {
+      if (node.type === 'imageReference' && typeof node.identifier === 'string') {
+        imageReferences.add(node.identifier);
+      }
+    });
+
+    visitMdast(tree, (node) => {
+      const isImage = node.type === 'image';
+      const isImageDefinition =
+        node.type === 'definition' &&
+        typeof node.identifier === 'string' &&
+        imageReferences.has(node.identifier);
+
+      if ((!isImage && !isImageDefinition) || typeof node.url !== 'string') {
+        return;
+      }
+      if (!isRelativeImageTarget(node.url)) {
+        return;
+      }
+
+      const original = node.url;
+      const resolved = resolveImageAsset(original, context);
+      node.url = resolved.url;
+      context.rewrites.set(original, resolved.absoluteUrl);
+    });
+  };
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Raw Markdown is served at `/blog/<slug>.md`, where relative image paths would
+ * resolve against `/blog/` instead of the post folder. Point them at the
+ * absolute asset URL so agents and `llms-full.txt` readers can fetch them.
+ *
+ * Only URLs actually parsed as images appear in `rewrites`, so identical text
+ * inside a code block is left alone unless the same target is also a real
+ * image elsewhere in the post.
+ */
+function rewriteImageUrlsInSource(
+  source: string,
+  rewrites: ReadonlyMap<string, string>,
+): string {
+  if (rewrites.size === 0) {
+    return source;
+  }
+
+  let result = source;
+  for (const [from, to] of rewrites) {
+    const escaped = escapeRegExp(from);
+
+    // Inline image: ![alt](./cover.png "title") or ![alt](<./cover.png>).
+    result = result.replace(
+      new RegExp(`(!\\[[^\\]]*\\]\\()<?${escaped}>?(?=[\\s)])`, 'g'),
+      (_match, prefix: string) => `${prefix}${to}`,
+    );
+
+    // Reference definition used by an image: [id]: ./cover.png "title".
+    result = result.replace(
+      new RegExp(
+        `(^\\s*\\[[^\\]]+\\]:[ \\t]*)<?${escaped}>?(?=[ \\t]*(?:$|["']))`,
+        'gm',
+      ),
+      (_match, prefix: string) => `${prefix}${to}`,
+    );
+  }
+  return result;
+}
+
+async function compileMarkdown(
+  markdown: string,
+  context: AssetContext,
+): Promise<CompiledMarkdown> {
+  const { siteUrl } = context;
   const headings: PostHeading[] = [];
   const file = await unified()
     .use(remarkParse)
     .use(remarkGfm)
+    .use(() => rewriteRelativeImages(context))
     .use(remarkRehype)
     .use(rehypeSlug)
     .use(collectHeadings, headings)
@@ -449,47 +700,30 @@ async function compileMarkdown(markdown: string, siteUrl: string): Promise<Compi
 /* Loading                                                                    */
 /* -------------------------------------------------------------------------- */
 
-function listMarkdownFiles(dir: string): string[] {
-  if (!existsSync(dir) || !statSync(dir).isDirectory()) {
-    return [];
-  }
-
-  const files: string[] = [];
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    if (entry.name.startsWith('.')) {
-      continue;
-    }
-    const entryPath = path.join(dir, entry.name);
-    if (entry.isDirectory()) {
-      files.push(...listMarkdownFiles(entryPath));
-    } else if (entry.isFile() && /\.md$/i.test(entry.name)) {
-      files.push(entryPath);
-    }
-  }
-
-  // Deterministic order so duplicate-slug errors and output stay stable.
-  return files.sort((left, right) => (left < right ? -1 : left > right ? 1 : 0));
-}
-
 /**
- * Read, validate and compile every Markdown file in `contentDir`.
+ * Read, validate and compile every post in `contentDir`.
  *
- * Throws on invalid frontmatter, an underivable slug and duplicate slugs, so a
- * broken post fails `npm run build` instead of disappearing silently.
+ * Throws on invalid frontmatter, an underivable slug, a missing local image and
+ * duplicate slugs, so a broken post fails `npm run build` instead of
+ * disappearing silently.
  */
-export async function loadPosts(options: LoadPostsOptions = {}): Promise<Post[]> {
+export async function loadPostsWithAssets(
+  options: LoadPostsOptions = {},
+): Promise<LoadPostsResult> {
   const contentDir = options.contentDir ?? DEFAULT_CONTENT_DIR;
   const includeDrafts = options.includeDrafts ?? false;
   const siteUrl = normalizeSiteUrl(options.siteUrl ?? DEFAULT_SITE_URL);
 
   const seenSlugs = new Map<string, string>();
   const posts: Post[] = [];
+  const assets = new Map<string, PostAsset>();
 
-  for (const filePath of listMarkdownFiles(contentDir)) {
-    const source = readFileSync(filePath, 'utf8');
-    const parsed = matter(source);
+  for (const source of listPostSources(contentDir)) {
+    const { filePath } = source;
+    const raw = readFileSync(filePath, 'utf8');
+    const parsed = matter(raw);
     const frontmatter = readFrontmatter(filePath, parsed.data, parsed.matter);
-    const slug = frontmatter.slug ?? slugFromFilename(filePath);
+    const slug = frontmatter.slug ?? source.defaultSlug();
 
     const previous = seenSlugs.get(slug);
     if (previous !== undefined) {
@@ -503,7 +737,15 @@ export async function loadPosts(options: LoadPostsOptions = {}): Promise<Post[]>
       continue;
     }
 
-    const compiled = await compileMarkdown(parsed.content, siteUrl);
+    const context: AssetContext = {
+      filePath,
+      slug,
+      assetDir: source.assetDir,
+      siteUrl,
+      assets,
+      rewrites: new Map(),
+    };
+    const compiled = await compileMarkdown(parsed.content, context);
 
     posts.push({
       slug,
@@ -516,11 +758,17 @@ export async function loadPosts(options: LoadPostsOptions = {}): Promise<Post[]>
       html: compiled.html,
       headings: compiled.headings,
       readingMinutes: estimateReadingMinutes(parsed.content),
-      source,
+      source: rewriteImageUrlsInSource(raw, context.rewrites),
     });
   }
 
-  return sortPosts(posts);
+  return { posts: sortPosts(posts), assets: [...assets.values()] };
+}
+
+/** Posts only; used by the Vite virtual module and the agent artifacts. */
+export async function loadPosts(options: LoadPostsOptions = {}): Promise<Post[]> {
+  const { posts } = await loadPostsWithAssets(options);
+  return posts;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -537,14 +785,44 @@ function isInsideDir(dir: string, file: string): boolean {
   return relative !== '' && !relative.startsWith('..') && !path.isAbsolute(relative);
 }
 
+const CONTENT_TYPES: Record<string, string> = {
+  '.avif': 'image/avif',
+  '.gif': 'image/gif',
+  '.jpeg': 'image/jpeg',
+  '.jpg': 'image/jpeg',
+  '.png': 'image/png',
+  '.svg': 'image/svg+xml',
+  '.webp': 'image/webp',
+};
+
+function contentTypeFor(filePath: string): string {
+  return CONTENT_TYPES[path.extname(filePath).toLowerCase()] ?? 'application/octet-stream';
+}
+
 /**
  * Exposes the compiled posts as `virtual:blog-posts` (default export).
  * Drafts stay visible in `npm run dev` and are removed from the build payload.
+ *
+ * Per-post images are copied to `blog/<slug>/…` in the client build and served
+ * from the content folder by a small dev middleware, so `content/blog/<slug>/`
+ * stays the only copy authors edit.
  */
 export function blogContent(options: BlogContentPluginOptions = {}): Plugin {
   const contentDir = options.contentDir ?? DEFAULT_CONTENT_DIR;
   const siteUrl = options.siteUrl ?? DEFAULT_SITE_URL;
   let includeDrafts = false;
+
+  let assets: PostAsset[] = [];
+  let assetRoutes = new Map<string, string>();
+  let assetsLoaded = false;
+
+  async function refreshAssets(): Promise<Post[]> {
+    const result = await loadPostsWithAssets({ includeDrafts, contentDir, siteUrl });
+    assets = result.assets;
+    assetRoutes = new Map(result.assets.map((asset) => [asset.url, asset.sourcePath]));
+    assetsLoaded = true;
+    return result.posts;
+  }
 
   return {
     name: 'bl-blog-content',
@@ -564,21 +842,86 @@ export function blogContent(options: BlogContentPluginOptions = {}): Plugin {
         return null;
       }
 
-      const posts = await loadPosts({ includeDrafts, contentDir, siteUrl });
+      const posts = await refreshAssets();
       // JSON is valid JS; `source`/`html` are strings, so no escaping hazards.
       return `export default ${JSON.stringify(posts)};\n`;
     },
 
+    async generateBundle() {
+      const environment = this.environment;
+      if (environment !== undefined && environment.name !== 'client') {
+        return;
+      }
+      if (!assetsLoaded) {
+        await refreshAssets();
+      }
+
+      for (const asset of assets) {
+        this.emitFile({
+          type: 'asset',
+          fileName: asset.outputPath,
+          source: readFileSync(asset.sourcePath),
+        });
+      }
+    },
+
     configureServer(server) {
-      // `.md` files are read through `fs`, never imported, so Vite does not
-      // watch them by default.
+      // `.md` and image files are read through `fs`, never imported, so Vite
+      // does not watch them by default.
       server.watcher.add(contentDir);
+
+      server.middlewares.use((request, response, next) => {
+        void (async () => {
+          if (request.method !== 'GET' && request.method !== 'HEAD') {
+            next();
+            return;
+          }
+
+          const pathname = (request.url ?? '').split('?')[0] ?? '';
+          if (!pathname.startsWith('/blog/')) {
+            next();
+            return;
+          }
+
+          let decoded: string;
+          try {
+            decoded = decodeURIComponent(pathname);
+          } catch {
+            next();
+            return;
+          }
+
+          if (!assetsLoaded) {
+            try {
+              await refreshAssets();
+            } catch (error) {
+              next(error);
+              return;
+            }
+          }
+
+          const sourcePath = assetRoutes.get(decoded);
+          if (sourcePath === undefined) {
+            next();
+            return;
+          }
+
+          response.statusCode = 200;
+          response.setHeader('Content-Type', contentTypeFor(sourcePath));
+          response.setHeader('Cache-Control', 'no-store');
+          response.end(request.method === 'HEAD' ? undefined : readFileSync(sourcePath));
+        })();
+      });
     },
 
     handleHotUpdate(context) {
       if (!isInsideDir(contentDir, context.file)) {
         return;
       }
+
+      // Images may have been added/removed; rebuild the URL → file map on the
+      // next request (the full reload below re-evaluates the virtual module).
+      assetsLoaded = false;
 
       const virtualModule = context.server.moduleGraph.getModuleById(RESOLVED_VIRTUAL_MODULE_ID);
       if (virtualModule !== undefined) {

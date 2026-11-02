@@ -13,7 +13,7 @@ site/
   + components/        layout / tier / blog / ui
   + lib/               tier 模型与持久化、cards 筛选、blog 解析、seo 构造
   + data/              导出产物（cards.json / taxonomy.json / meta.json），入库
-+ content/blog/*.md    Markdown 文章（frontmatter 带 slug）
++ content/blog/<slug>/ 每篇文章一个目录：index.md + 同目录图片/附件
 + plugins/            构建期插件：blog 内容、Agent 产物、卡片数据
 + public/             静态资源；`_headers` 是 Pages 的响应头配置
 + scripts/            sync-data、postbuild、preview、assert-build、deploy
@@ -49,6 +49,47 @@ npm run preview    # 以 Cloudflare Pages 的方式提供 dist/（默认 4173，
 不一致，看起来就像站点自己的 hydration 报错（React #418）。为了本地预览与线上一致，
 `npm run preview` 改用 `scripts/preview.mjs`：纯 Node 静态服务器，按目录索引、未知
 路径返回 `404.html`，并拒绝路径穿越。
+
+## 写博客
+
+每篇文章一个目录，Markdown 与图片放在一起：
+
+```text
+content/blog/
++ tier-guide/
+  + index.md
+  + images/
+    + drag.png
++ card-data/
+  + index.md
+```
+
+`index.md` 的 frontmatter：
+
+```yaml
+---
+title: 标题（必填）
+date: 2026-11-02            # 必填，YYYY-MM-DD
+updated: 2026-11-03         # 可选
+tags: [节奏榜, 攻略]        # 可选
+summary: 列表页与 SEO 摘要（必填）
+slug: custom-slug           # 可选，默认取目录名
+draft: false                # 可选，true 只在 dev 显示
+---
+```
+
+正文里用相对路径引用同目录的图片：
+
+```md
+![拖拽示意](./images/drag.png)
+```
+
+- 构建期会把图片复制到 `dist/blog/<slug>/…`，页面里的地址重写为 `/blog/<slug>/…`。
+- `/blog/<slug>.md` 与 `llms-full.txt` 中的同一张图会重写为绝对地址。
+- 图片不存在、路径跑出文章目录，或在平铺的 `content/blog/foo.md` 里使用相对图片，构建会直接报错。
+- 目录名/文件名需匹配 `[a-z0-9-]`；非 ASCII 目录可以用 frontmatter `slug` 指定地址。
+- 没有 `index.md` 的目录会被忽略；以 `_` 开头的目录保留给共用资源。
+- 旧式平铺的 `content/blog/foo.md` 仍然可用，但不能引用本地图片。
 
 ## 数据
 

@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { createElement } from 'react';
@@ -25,6 +25,7 @@ import {
   blogContent,
   estimateReadingMinutes,
   loadPosts,
+  loadPostsWithAssets,
 } from '../../plugins/blog-content';
 
 const SITE_URL = 'https://bl.cracklewis.site';
@@ -119,6 +120,130 @@ describe('loadPosts frontmatter', () => {
     const withDrafts = await loadPosts({ contentDir, includeDrafts: true });
     expect(withDrafts.map((post) => post.slug).sort()).toEqual(['draft', 'published']);
     expect(withDrafts.find((post) => post.slug === 'draft')?.draft).toBe(true);
+  });
+});
+
+function writeFolderPost(
+  folderName: string,
+  body: string,
+  options: {
+    frontmatter?: string;
+    assets?: Record<string, string>;
+  } = {},
+): void {
+  const folder = path.join(contentDir, folderName);
+  mkdirSync(folder, { recursive: true });
+  writeFileSync(
+    path.join(folder, 'index.md'),
+    `---\n${options.frontmatter ?? FRONTMATTER}\n---\n\n${body}\n`,
+    'utf8',
+  );
+
+  for (const [name, content] of Object.entries(options.assets ?? {})) {
+    const target = path.join(folder, name);
+    mkdirSync(path.dirname(target), { recursive: true });
+    writeFileSync(target, content, 'utf8');
+  }
+}
+
+describe('per-post folders and local images', () => {
+  it('derives the slug from the folder and rewrites/copies relative images', async () => {
+    writeFolderPost('hello-world', '![封面](./cover.png)', {
+      assets: { 'cover.png': 'fake-png' },
+    });
+
+    const { posts, assets } = await loadPostsWithAssets({ contentDir, siteUrl: SITE_URL });
+    expect(posts).toHaveLength(1);
+    expect(posts[0]?.slug).toBe('hello-world');
+    expect(posts[0]?.html).toContain('src="/blog/hello-world/cover.png"');
+    expect(posts[0]?.source).toContain(
+      `![封面](${SITE_URL}/blog/hello-world/cover.png)`,
+    );
+
+    expect(assets).toHaveLength(1);
+    expect(assets[0]).toMatchObject({
+      relativePath: 'cover.png',
+      outputPath: 'blog/hello-world/cover.png',
+      url: '/blog/hello-world/cover.png',
+    });
+    expect(assets[0]?.sourcePath).toBe(path.join(contentDir, 'hello-world', 'cover.png'));
+  });
+
+  it('supports nested paths with spaces and CJK file names', async () => {
+    writeFolderPost('diagram', '![流程图](<images/流程 图.png>)', {
+      assets: { 'images/流程 图.png': 'fake-png' },
+    });
+
+    const { posts, assets } = await loadPostsWithAssets({ contentDir, siteUrl: SITE_URL });
+    expect(posts[0]?.html).toContain(
+      'src="/blog/diagram/images/%E6%B5%81%E7%A8%8B%20%E5%9B%BE.png"',
+    );
+    expect(posts[0]?.source).toContain(
+      `${SITE_URL}/blog/diagram/images/%E6%B5%81%E7%A8%8B%20%E5%9B%BE.png`,
+    );
+    expect(assets[0]?.outputPath).toBe('blog/diagram/images/流程 图.png');
+  });
+
+  it('rewrites reference-style images and leaves external/root URLs alone', async () => {
+    writeFolderPost(
+      'references',
+      [
+        '![封面][cover]',
+        '',
+        '![外站](https://example.com/a.png)',
+        '',
+        '![站内](/data/b.png)',
+        '',
+        '[cover]: ./cover.png "标题"',
+      ].join('\n'),
+      { assets: { 'cover.png': 'fake-png' } },
+    );
+
+    const { posts } = await loadPostsWithAssets({ contentDir, siteUrl: SITE_URL });
+    const html = posts[0]?.html ?? '';
+    const source = posts[0]?.source ?? '';
+
+    expect(html).toContain('src="/blog/references/cover.png"');
+    expect(html).toContain('src="https://example.com/a.png"');
+    expect(html).toContain('src="/data/b.png"');
+    expect(source).toContain(`[cover]: ${SITE_URL}/blog/references/cover.png "标题"`);
+    expect(source).toContain('![外站](https://example.com/a.png)');
+    expect(source).toContain('![站内](/data/b.png)');
+  });
+
+  it('fails on missing images and paths that escape the post folder', async () => {
+    writeFolderPost('missing', '![x](./nope.png)');
+    await expect(loadPosts({ contentDir })).rejects.toThrow(/not found/);
+
+    rmSync(contentDir, { recursive: true, force: true });
+    contentDir = mkdtempSync(path.join(tmpdir(), 'bl-blog-'));
+    writeFolderPost('escape', '![x](../outside.png)');
+    await expect(loadPosts({ contentDir })).rejects.toThrow(/outside the post folder/);
+  });
+
+  it('rejects relative images in legacy flat posts', async () => {
+    writePost('flat.md', FRONTMATTER, '![x](./cover.png)');
+    await expect(loadPosts({ contentDir })).rejects.toThrow(/own folder/);
+  });
+
+  it('accepts a non-ASCII folder when frontmatter supplies the slug', async () => {
+    writeFolderPost('中文目录', '正文', { frontmatter: `${FRONTMATTER}\nslug: ascii-slug` });
+    await expect(loadPosts({ contentDir })).resolves.toMatchObject([{ slug: 'ascii-slug' }]);
+  });
+
+  it('does not copy assets for drafts in production', async () => {
+    writeFolderPost('draft-post', '![x](./cover.png)', {
+      frontmatter: `${FRONTMATTER}\ndraft: true`,
+      assets: { 'cover.png': 'fake-png' },
+    });
+
+    const published = await loadPostsWithAssets({ contentDir });
+    expect(published.posts).toHaveLength(0);
+    expect(published.assets).toHaveLength(0);
+
+    const development = await loadPostsWithAssets({ contentDir, includeDrafts: true });
+    expect(development.posts).toHaveLength(1);
+    expect(development.assets).toHaveLength(1);
   });
 });
 
@@ -373,6 +498,42 @@ describe('blogContent plugin', () => {
     const production = await loadVirtualPayload(blogContent({ contentDir }), 'production');
     expect(production).toContain('"slug":"published"');
     expect(production).not.toContain('"slug":"draft"');
+  });
+
+  it('emits referenced images into the client bundle', async () => {
+    writeFolderPost('plugin-post', '![x](./cover.png)', {
+      assets: { 'cover.png': 'fake-png' },
+    });
+
+    const plugin = blogContent({ contentDir, siteUrl: SITE_URL });
+    await loadVirtualPayload(plugin, 'production');
+
+    type Emitted = { type: string; fileName: string; source: unknown };
+    type GenerateHook = (this: {
+      environment: { name: string };
+      emitFile: (file: Emitted) => void;
+    }) => Promise<void>;
+
+    const raw = plugin.generateBundle;
+    const generateBundle = (
+      typeof raw === 'function' ? raw : (raw as { handler: unknown }).handler
+    ) as GenerateHook;
+
+    const emitted: Emitted[] = [];
+    await generateBundle.call({
+      environment: { name: 'client' },
+      emitFile: (file) => {
+        emitted.push(file);
+      },
+    });
+
+    expect(emitted).toHaveLength(1);
+    expect(emitted[0]).toMatchObject({
+      type: 'asset',
+      fileName: 'blog/plugin-post/cover.png',
+    });
+    expect(Buffer.isBuffer(emitted[0]?.source)).toBe(true);
+    expect(String(emitted[0]?.source)).toBe('fake-png');
   });
 });
 
