@@ -94,10 +94,18 @@ test.describe('节奏榜（/tier）', () => {
     await page.mouse.move(before!.x + 4, y);
     await page.mouse.down();
     await page.mouse.move(before!.x + 4 + 64, y, { steps: 6 });
+
+    // Live preview updates the CSS variable directly; React state (and
+    // storage) is only touched on release.
+    const during = await handle.boundingBox();
+    expect(during!.x - before!.x).toBeGreaterThan(56);
+    expect(await page.evaluate(() => localStorage.getItem('bl.tier.nameWidth.v1'))).toBeNull();
+
     await page.mouse.up();
     const dragged = await handle.boundingBox();
     expect(dragged!.x - before!.x).toBeGreaterThan(56);
     expect(dragged!.x - before!.x).toBeLessThan(72);
+    expect(await page.evaluate(() => localStorage.getItem('bl.tier.nameWidth.v1'))).not.toBeNull();
 
     // Persisted across a reload.
     await page.reload();

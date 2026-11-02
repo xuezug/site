@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import {
   DndContext,
@@ -108,6 +108,25 @@ export function TierBoard({
   const [importOpen, setImportOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
   const { width: nameWidth, setWidth: setNameWidth } = useNameWidth();
+  const rowsRef = useRef<HTMLDivElement>(null);
+
+  // Resizing the name column must not re-render the 916-card pool on every
+  // pointermove. During the drag the width is written straight to the rows
+  // container's CSS variable; React state (and storage) is updated once on
+  // release.
+  const previewNameWidth = useCallback((px: number): void => {
+    rowsRef.current?.style.setProperty('--bl-tier-name-w', `${px}px`);
+  }, []);
+
+  const commitNameWidth = useCallback(
+    (px: number | null): void => {
+      if (px === null) {
+        rowsRef.current?.style.removeProperty('--bl-tier-name-w');
+      }
+      setNameWidth(px);
+    },
+    [setNameWidth],
+  );
 
   const titleValue = titleDraft ?? board.title;
   const activeSerial = dragging?.serial ?? null;
@@ -397,6 +416,7 @@ export function TierBoard({
           </p>
 
           <div
+            ref={rowsRef}
             className="flex flex-col gap-2"
             style={
               nameWidth === null
@@ -422,7 +442,8 @@ export function TierBoard({
                 onRemoveTier={handleRemoveTier}
                 onAssign={moveCard}
                 nameWidth={nameWidth}
-                onResizeNameWidth={setNameWidth}
+                onResizeNameWidth={commitNameWidth}
+                onPreviewNameWidth={previewNameWidth}
               />
             ))}
           </div>

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useRef } from 'react';
 import type {
   KeyboardEvent as ReactKeyboardEvent,
   PointerEvent as ReactPointerEvent,
@@ -32,6 +32,8 @@ type TierRowProps = {
   /** Pinned name-column width, or `null` for the responsive default. */
   nameWidth: number | null;
   onResizeNameWidth: (px: number | null) => void;
+  /** Live width during a drag; writes the CSS variable without React state. */
+  onPreviewNameWidth: (px: number) => void;
 };
 
 type PlacedCardProps = {
@@ -100,6 +102,7 @@ export function TierRow({
   onAssign,
   nameWidth,
   onResizeNameWidth,
+  onPreviewNameWidth,
 }: TierRowProps) {
   const { setNodeRef, isOver } = useDroppable({
     id: tierDndId(tier.id),
@@ -107,30 +110,17 @@ export function TierRow({
   });
 
   const headerRef = useRef<HTMLDivElement>(null);
-  const [liveWidth, setLiveWidth] = useState(88);
   const dragRef = useRef<{ startX: number; startWidth: number } | null>(null);
+  const pendingWidth = useRef<number | null>(null);
 
-  useEffect(() => {
-    const element = headerRef.current;
-    if (element === null) {
-      return;
-    }
-    const measure = (): void => setLiveWidth(Math.round(element.getBoundingClientRect().width));
-    measure();
-    if (typeof ResizeObserver === 'undefined') {
-      return;
-    }
-    const observer = new ResizeObserver(measure);
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, [nameWidth]);
+  const measureWidth = (): number =>
+    headerRef.current?.getBoundingClientRect().width ?? (nameWidth ?? 88);
 
   const startResize = (event: ReactPointerEvent<HTMLDivElement>): void => {
     event.preventDefault();
     event.stopPropagation();
-    const element = headerRef.current;
-    const startWidth = element?.getBoundingClientRect().width ?? liveWidth;
-    dragRef.current = { startX: event.clientX, startWidth };
+    dragRef.current = { startX: event.clientX, startWidth: measureWidth() };
+    pendingWidth.current = null;
     event.currentTarget.setPointerCapture(event.pointerId);
     event.currentTarget.focus();
   };
@@ -140,7 +130,9 @@ export function TierRow({
     if (drag === null) {
       return;
     }
-    onResizeNameWidth(clampNameWidth(drag.startWidth + event.clientX - drag.startX));
+    const next = clampNameWidth(drag.startWidth + event.clientX - drag.startX);
+    pendingWidth.current = next;
+    onPreviewNameWidth(next);
   };
 
   const endResize = (event: ReactPointerEvent<HTMLDivElement>): void => {
@@ -151,6 +143,11 @@ export function TierRow({
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
+    const next = pendingWidth.current;
+    pendingWidth.current = null;
+    if (next !== null) {
+      onResizeNameWidth(next);
+    }
   };
 
   const keyResize = (event: ReactKeyboardEvent<HTMLDivElement>): void => {
@@ -159,7 +156,7 @@ export function TierRow({
     }
     event.preventDefault();
     const step = event.shiftKey ? 24 : 8;
-    const base = nameWidth ?? liveWidth;
+    const base = nameWidth ?? measureWidth();
     onResizeNameWidth(clampNameWidth(base + (event.key === 'ArrowRight' ? step : -step)));
   };
 
@@ -192,7 +189,7 @@ export function TierRow({
         aria-label={`调整 ${tier.name} 名称列宽度`}
         aria-valuemin={NAME_WIDTH_MIN}
         aria-valuemax={NAME_WIDTH_MAX}
-        aria-valuenow={Math.round(nameWidth ?? liveWidth)}
+        aria-valuenow={nameWidth ?? undefined}
         title="拖动调整名称列宽度，双击恢复默认"
         tabIndex={0}
         onPointerDown={startResize}
